@@ -1,0 +1,27 @@
+# Member 1 — data loading, preprocessing, splits, anchors, corpus analysis
+# Python 3.10+ recommended, including 3.11 (Windows OK).
+#
+# After install, download the spaCy English model (required for NER in anchors.py):
+#   python -m spacy download en_core_web_sm
+
+# Core tables / IO
+numpy>=1.24.0,<3
+pandas>=2.0.0,<3
+tqdm>=4.66.0
+
+# Standard split (stratify) + topic-hard split (clustering on embeddings)
+scikit-learn>=1.3.0,<2
+
+# NER for anchor extraction
+spacy>=3.7.0,<4
+
+# Sentence embeddings for topic clustering (topic-hard split)
+sentence-transformers>=2.2.0,<4
+
+# Corpus analysis figures
+matplotlib>=3.7.0,<4
+seaborn>=0.13.0,<1
+
+# Optional: interactive notebook for corpus_analysis.ipynb
+jupyter>=1.0.0
+ipykernel>=6.0.0
