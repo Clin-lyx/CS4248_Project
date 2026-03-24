@@ -21,11 +21,40 @@ def normalize_headline(headline: str) -> str:
         return ""
 
     headline = unicodedata.normalize("NFKC", headline)
-
-    headline = headline.replace("\u2018", "'").replace("\u2019", "'")
-    headline = headline.replace("\u201c", '"').replace("\u201d", '"')
-    headline = headline.replace("\u2013", "-").replace("\u2014", "-")
-    headline = headline.replace("\u2026", "...")
+    '''
+    Normalize the following unicode characters:
+    \u2018: '
+    \u2019: '
+    \u201c: "
+    \u201d: "
+    \u2013: -
+    \u2014: -
+    \u2026: ...
+    \u00a0: space
+    \u200b: zero width space
+    \u200c: zero width non-joiner
+    \u200d: zero width joiner
+    \ufeff: byte order mark
+    \u00ad: soft hyphen
+    '''
+    
+    replacements = {
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2026": "...",
+        "\u00a0": " ",
+        "\u200b": "",
+        "\u200c": "",
+        "\u200d": "",
+        "\ufeff": "",
+        "\u00ad": "",
+    }
+    for old, new in replacements.items():
+        headline = headline.replace(old, new)
 
     headline = re.sub(r"\s+", " ", headline)
     headline = headline.strip()
