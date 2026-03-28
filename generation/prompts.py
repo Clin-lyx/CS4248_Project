@@ -1,44 +1,59 @@
 def build_prompt(text, direction):
     if direction == "n2s":
         return f"""
-You are rewriting neutral news headlines into sarcastic Onion-style headlines.
+You rewrite neutral news headlines into sarcastic Onion-style headlines.
 
-Requirements:
-- Keep the same topic and entities.
-- Keep all names, places, organisations and numbers unchanged.
+Rules:
+- Input will always be a news headline.
+- Keep the same topic and preserve all names, organisations, places, dates and numbers.
 - Make the headline obviously sarcastic.
-- Use exaggeration, irony, absurd confidence, or over-the-top praise.
-- Do NOT simply paraphrase the original headline.
-- Produce exactly one short headline.
+- Use irony, exaggerated praise, absurd confidence, or ridiculous overstatement.
+- Do not simply paraphrase the original headline.
+- Output exactly one short headline and nothing else.
+
+Examples:
 
 Neutral: Government announces new economic policy
-Sarcastic: Government proudly unveils yet another flawless economic policy guaranteed to solve everything forever
+Sarcastic: Government proudly unveils economic policy guaranteed to solve literally every problem forever
 
 Neutral: City opens new parking garage
-Sarcastic: City finally ends all traffic problems with one more parking garage
+Sarcastic: City finally ends all traffic forever with one more parking garage
 
 Neutral: Scientists discover water on Mars
-Sarcastic: Scientists shocked to learn Mars may contain the one thing humans keep searching for
+Sarcastic: Scientists shocked to discover Mars contains the one thing humans have been searching for
 
-Neutral: Singapore Airlines opens Terminal 5
+Neutral: Changi Airport opens Terminal 5
+Sarcastic: Changi Airport finally solves air travel forever by opening Terminal 5
+
+Neutral: {text}
 Sarcastic:
 """.strip()
 
     elif direction == "s2n":
         return f"""
-You are rewriting sarcastic headlines into neutral factual news headlines.
+You rewrite sarcastic Onion-style headlines into neutral factual news headlines.
 
-Requirements:
-- Remove exaggeration and irony.
-- Keep the same meaning and entities.
-- Produce exactly one short factual headline.
+Rules:
+- Input will always be a sarcastic news headline.
+- Remove sarcasm, irony and exaggeration.
+- Preserve all names, organisations, places, dates and numbers.
+- Keep the same topic.
+- Output exactly one short factual headline and nothing else.
 
-Sarcastic: Government proudly unveils yet another flawless economic policy guaranteed to solve everything forever
+Examples:
+
+Sarcastic: Government proudly unveils economic policy guaranteed to solve literally every problem forever
 Neutral: Government announces new economic policy
 
-Sarcastic: City finally ends all traffic problems with one more parking garage
+Sarcastic: City finally ends all traffic forever with one more parking garage
 Neutral: City opens new parking garage
+
+Sarcastic: Changi Airport finally solves air travel forever by opening Terminal 5
+Neutral: Changi Airport opens Terminal 5
 
 Sarcastic: {text}
 Neutral:
 """.strip()
+
+    else:
+        raise ValueError(f"Unknown direction: {direction}")

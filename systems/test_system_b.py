@@ -2,7 +2,7 @@ from systems.system_b_encdec import generate_candidates
 
 
 def main():
-    headline = "Changi Airport just opened Terminal 5"
+    headline = "Singapore opens new MRT line"
 
     outputs = generate_candidates(
         input_text=headline,
