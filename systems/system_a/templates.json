@@ -1,0 +1,56 @@
+{
+  "neutral_to_sarcastic_prefixes": [
+    "Experts confirm",
+    "Nation relieved as",
+    "Report:",
+    "Sources confirm"
+  ],
+  "neutral_to_sarcastic_suffixes": [
+    "for some reason",
+    "in stunning development",
+    "to everyone's surprise"
+  ],
+  "neutral_to_sarcastic_question_suffixes": [
+    "for some reason",
+    "all of a sudden"
+  ],
+  "neutral_to_sarcastic_list_suffixes": [
+    "in stunning development",
+    "to everyone's surprise"
+  ],
+  "neutral_to_sarcastic_person_prefixes": [
+    "Experts confirm",
+    "Sources confirm"
+  ],
+  "neutral_to_sarcastic_policy_prefixes": [
+    "Nation relieved as",
+    "Experts confirm"
+  ],
+  "sarcastic_prefixes_to_strip": [
+    "report: ",
+    "study: ",
+    "study finds ",
+    "experts confirm ",
+    "sources confirm ",
+    "nation relieved as ",
+    "area man ",
+    "area woman "
+  ],
+  "sarcastic_words_to_soften": {
+    "heroically": "",
+    "brilliantly": "",
+    "miraculously": "",
+    "somehow": "",
+    "shockingly": "",
+    "obviously": "",
+    "finally": "",
+    "just": "",
+    "literally": ""
+  },
+  "sarcastic_suffixes_to_strip": [
+    "for some reason",
+    "in stunning development",
+    "to everyone's surprise",
+    "all of a sudden"
+  ]
+}
