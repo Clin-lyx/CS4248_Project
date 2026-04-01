@@ -15,6 +15,11 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _DEFAULT_SPLIT_PATH = "artifacts/splits/standard.json"
 _DEFAULT_CLEANED_PATH = "artifacts/data/cleaned.jsonl"
 
+SPLIT_REGISTRY: dict[str, str] = {
+    "standard": "artifacts/splits/standard.json",
+    "topic_hard": "artifacts/splits/topic_hard.json",
+}
+
 
 # ---------------------------------------------------------------------------
 # Load helpers
@@ -59,6 +64,34 @@ def get_split_df(
         raise KeyError(f"Unknown split '{split_name}'. Available: {[k for k in split if k != 'meta']}")
     ids = set(split[split_name])
     return df[df["id"].isin(ids)].reset_index(drop=True)
+
+
+def get_all_splits(
+    df: pd.DataFrame,
+    split: str = "standard",
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Return (train_df, dev_df, test_df) for a named split strategy.
+
+    Available splits: "standard", "topic_hard".
+
+    Usage::
+
+        from data.splits import load_cleaned_data, get_all_splits
+
+        df = load_cleaned_data()
+        train_df, dev_df, test_df = get_all_splits(df, split="topic_hard")
+    """
+    if split not in SPLIT_REGISTRY:
+        raise KeyError(
+            f"Unknown split '{split}'. Available: {sorted(SPLIT_REGISTRY)}"
+        )
+    path = SPLIT_REGISTRY[split]
+    return (
+        get_split_df(df, "train", split_path=path),
+        get_split_df(df, "dev", split_path=path),
+        get_split_df(df, "test", split_path=path),
+    )
 
 
 # ---------------------------------------------------------------------------

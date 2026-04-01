@@ -119,40 +119,38 @@ df_anchored = pd.read_json("artifacts/data/cleaned_with_anchors.jsonl", lines=Tr
 
 ---
 
-## Python: apply the frozen split
+## Python: load splits
+
+The easiest way — one function, pick a split by name:
 
 ```python
-from data.splits import load_cleaned_data, get_split_df
+from data.splits import load_cleaned_data, get_all_splits
 
 df = load_cleaned_data()
-train_df = get_split_df(df, "train")
-dev_df = get_split_df(df, "dev")
-test_df = get_split_df(df, "test")
+
+# Standard stratified split (default)
+train_df, dev_df, test_df = get_all_splits(df, split="standard")
+
+# Topic-hard split (whole clusters per split)
+train_df, dev_df, test_df = get_all_splits(df, split="topic_hard")
 ```
 
-Only `id` values present in `cleaned.jsonl` are valid. If you regenerate preprocess output, **IDs may change** — then regenerate anchors and splits and recommit `standard.json`.
+Available names: `"standard"`, `"topic_hard"`.
 
-Raw ID lists without filtering the DataFrame:
+You can also use the lower-level helpers directly:
 
 ```python
-from data.splits import load_split
+from data.splits import load_cleaned_data, get_split_df, load_split
 
-bundle = load_split()
+df = load_cleaned_data()
+train_df = get_split_df(df, "train")                        # standard (default)
+dev_df = get_split_df(df, "dev", split_path="artifacts/splits/topic_hard.json")
+
+bundle = load_split()          # raw ID lists
 train_ids = set(bundle["train"])
 ```
 
----
-
-## Python: apply the topic-hard split
-
-```python
-from data.splits import load_cleaned_data, get_split_df
-
-df = load_cleaned_data()
-train_df = get_split_df(df, "train", split_path="artifacts/splits/topic_hard.json")
-dev_df   = get_split_df(df, "dev",   split_path="artifacts/splits/topic_hard.json")
-test_df  = get_split_df(df, "test",  split_path="artifacts/splits/topic_hard.json")
-```
+Only `id` values present in `cleaned.jsonl` are valid. If you regenerate preprocess output, **IDs may change** — then regenerate anchors and splits and recommit `standard.json`.
 
 ### How the topic-hard split works
 
