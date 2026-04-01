@@ -40,6 +40,7 @@ pip install -U spacy thinc weasel confection pydantic
 | `artifacts/data/cleaned.jsonl` | `data.preprocess` | Canonical rows: stable `id`, `text`, `label`, provenance |
 | `artifacts/data/cleaned_with_anchors.jsonl` | `data.anchors` | Same as cleaned + `anchors` column (spans for constraints / eval) |
 | `artifacts/splits/standard.json` | `data.splits` | Frozen train/dev/test **IDs** (stratified by `label`) |
+| `artifacts/splits/topic_hard.json` | `data.topic_hard_split` | Topic-hard split — whole topic clusters assigned to splits |
 
 **Order:** preprocess → (optional) anchors → splits. Splits reference `id` values from `cleaned.jsonl`.
 
@@ -51,6 +52,7 @@ pip install -U spacy thinc weasel confection pydantic
 python -m data.preprocess
 python -m data.anchors
 python -m data.splits
+python -m data.topic_hard_split   # optional: topic-hard split
 ```
 
 ---
@@ -82,6 +84,17 @@ Offsets refer to the **`text`** field (character indices, Python slice semantics
 
 - `meta`: ratios, `random_state`, row counts, per-split label counts  
 - `train`, `dev`, `test`: sorted lists of `id` strings  
+
+### `artifacts/splits/topic_hard.json`
+
+A **topic-hard** split where entire topic clusters are assigned to a single split, so train/dev/test see different topics. Useful for evaluating whether a model generalises beyond topic cues.
+
+- `meta.method`: `"topic_hard_tfidf_svd_kmeans"`
+- `meta.selected_k`: chosen number of clusters
+- `meta.k_metrics`: per-k evaluation (inertia, silhouette, entropy, label skew)
+- `meta.cluster_to_split`: mapping from cluster ID to split name
+- `meta.global_label_ratio`: dataset-wide label distribution
+- `train`, `dev`, `test`: sorted lists of `id` strings
 
 ---
 
@@ -127,6 +140,34 @@ from data.splits import load_split
 bundle = load_split()
 train_ids = set(bundle["train"])
 ```
+
+---
+
+## Python: apply the topic-hard split
+
+```python
+from data.splits import load_cleaned_data, get_split_df
+
+df = load_cleaned_data()
+train_df = get_split_df(df, "train", split_path="artifacts/splits/topic_hard.json")
+dev_df   = get_split_df(df, "dev",   split_path="artifacts/splits/topic_hard.json")
+test_df  = get_split_df(df, "test",  split_path="artifacts/splits/topic_hard.json")
+```
+
+### How the topic-hard split works
+
+1. **TF-IDF → TruncatedSVD → L2 normalisation** produces dense topic vectors.
+2. **KMeans** is evaluated over `k ∈ [20, 30, 40, 50, 60, 80]` using a composite score (silhouette, cluster size entropy, max cluster concentration, mean label skew).
+3. The best `k` is selected and each row is assigned a cluster.
+4. A **greedy algorithm** assigns whole clusters to train/dev/test:
+   - Primary signal: **proportional fill** — the least-filled split (relative to its 80/10/10 target) gets the next cluster.
+   - Overflow penalty discourages exceeding any target.
+   - Label-gap term nudges toward balanced label ratios.
+5. Result: train/dev/test contain **non-overlapping topic clusters**, so evaluation measures topic generalisation rather than topic memorisation.
+
+### Experiment notebook
+
+`notebooks/topic_clustering_tfidf_kmeans.ipynb` — interactive version with dry-run mode (`SAVE_SPLIT = False`) for iterating on parameters before writing the split file.
 
 ---
 
