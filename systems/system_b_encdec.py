@@ -1,3 +1,4 @@
+import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
 from generation.prompts import build_prompt
@@ -5,8 +6,9 @@ from generation.decoding_configs import DEFAULT_CONFIG
 
 MODEL_NAME = "google/flan-t5-large"
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
+model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME).to(device)
 
 
 def _normalize(text):
@@ -44,15 +46,15 @@ def generate_candidates(input_text, direction, k=5, decoding_config=None):
         truncation=True,
         max_length=256,
     )
+    inputs = {k_: v.to(device) for k_, v in inputs.items()}
 
-    # Generate more than needed because many outputs get filtered out
-    raw_k = max(k * 4, 12)
+    raw_k = k * 4 if k <= 3 else max(k * 2, 12)
 
     outputs = model.generate(
         **inputs,
         num_return_sequences=raw_k,
         **decoding_config,
-)
+    )
 
     candidates = []
     seen = set()
