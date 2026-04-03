@@ -152,14 +152,16 @@ def train(
     batch_size: int = 64,
     lr: float = 1e-3,
     seed: int = 42,
-) -> None:
+    split: str = "standard",
+) -> dict:
+    """Train BiLSTM classifier. Returns the metrics dict."""
     if output_dir is None:
         output_dir = ARTIFACT_ROOT
-    
+
     torch.manual_seed(seed)
     np.random.seed(seed)
 
-    train_df, dev_df, test_df = load_split_frames(text_col)
+    train_df, dev_df, test_df = load_split_frames(text_col, split=split)
 
     train_texts = train_df[text_col].astype(str).tolist()
     dev_texts = dev_df[text_col].astype(str).tolist()
@@ -254,6 +256,7 @@ def train(
     print(f"Saved model -> {checkpoint_path}")
     print(f"Saved metrics -> {metrics_path}")
     print(json.dumps(metrics, indent=2))
+    return metrics
 
 
 def predict(model_dir: Path = None, texts: list[str] = None, batch_size: int = 64) -> list[dict[str, Any]]:

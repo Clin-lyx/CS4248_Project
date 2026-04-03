@@ -40,12 +40,16 @@ def train(
     output_dir: Path = None,
     max_features: int = 50000,
     c_value: float = 1.0,
-) -> None:
-    """Train logistic regression classifier with TF-IDF features."""
+    split: str = "standard",
+) -> dict:
+    """Train logistic regression classifier with TF-IDF features.
+
+    Returns the metrics dict with 'dev' and 'test' keys.
+    """
     if output_dir is None:
         output_dir = ARTIFACT_ROOT
-    
-    train_df, dev_df, test_df = load_split_frames(text_col)
+
+    train_df, dev_df, test_df = load_split_frames(text_col, split=split)
 
     clf = Pipeline(
         steps=[
@@ -104,6 +108,7 @@ def train(
     print(f"Saved model -> {model_path}")
     print(f"Saved metrics -> {metrics_path}")
     print(json.dumps(metrics, indent=2))
+    return metrics
 
 
 def predict(model_dir: Path = None, texts: list[str] = None) -> list[dict[str, Any]]:

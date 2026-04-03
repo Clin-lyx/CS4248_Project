@@ -90,11 +90,13 @@ def train(
     weight_decay: float = 0.01,
     warmup_ratio: float = 0.1,
     seed: int = 42,
-) -> None:
+    split: str = "standard",
+) -> dict:
+    """Train transformer classifier. Returns the metrics dict."""
     torch.manual_seed(seed)
     np.random.seed(seed)
 
-    train_df, dev_df, test_df = load_split_frames(text_col)
+    train_df, dev_df, test_df = load_split_frames(text_col, split=split)
 
     train_texts = train_df[text_col].astype(str).tolist()
     dev_texts = dev_df[text_col].astype(str).tolist()
@@ -188,6 +190,7 @@ def train(
     print(f"Saved model + tokenizer -> {output_dir}")
     print(f"Saved metrics -> {metrics_path}")
     print(json.dumps(metrics, indent=2))
+    return metrics
 
 
 def predict(

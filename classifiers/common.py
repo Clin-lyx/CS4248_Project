@@ -16,7 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from data.splits import get_split_df, load_cleaned_data
+from data.splits import get_all_splits, get_split_df, load_cleaned_data
 
 
 def compute_metrics(y_true: np.ndarray, prob_pos: np.ndarray, threshold: float = 0.5) -> dict[str, float]:
@@ -41,17 +41,27 @@ def compute_metrics(y_true: np.ndarray, prob_pos: np.ndarray, threshold: float =
     return metrics
 
 
-def load_split_frames(text_col: str = "text") -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Load and return train, dev, test DataFrames with the specified text column."""
+def load_split_frames(
+    text_col: str = "text",
+    split: str = "standard",
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Load and return train, dev, test DataFrames for a given split strategy.
+
+    Parameters
+    ----------
+    text_col : str
+        Column that contains the input text.
+    split : str
+        Split name registered in ``data.splits.SPLIT_REGISTRY``
+        (e.g. ``"standard"`` or ``"topic_hard"``).
+    """
     df = load_cleaned_data()
-    train_df = get_split_df(df, "train")
-    dev_df = get_split_df(df, "dev")
-    test_df = get_split_df(df, "test")
-    
+    train_df, dev_df, test_df = get_all_splits(df, split=split)
+
     for part_name, part in (("train", train_df), ("dev", dev_df), ("test", test_df)):
         if text_col not in part.columns:
             raise ValueError(f"Missing text column '{text_col}' in {part_name} split.")
-    
+
     return train_df, dev_df, test_df
 
 
