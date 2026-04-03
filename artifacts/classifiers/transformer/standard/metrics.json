@@ -1,0 +1,27 @@
+{
+  "dev": {
+    "accuracy": 0.9182456140350878,
+    "precision": 0.9118942731277533,
+    "recall": 0.9166051660516605,
+    "f1": 0.9142436510857563,
+    "roc_auc": 0.9766784731392464
+  },
+  "test": {
+    "accuracy": 0.9228340933005963,
+    "precision": 0.9213649851632048,
+    "recall": 0.915929203539823,
+    "f1": 0.9186390532544378,
+    "roc_auc": 0.9752419569656969
+  },
+  "train_config": {
+    "model_name": "distilbert-base-uncased",
+    "text_col": "text",
+    "max_length": 64,
+    "batch_size": 16,
+    "lr": 2e-05,
+    "epochs": 1,
+    "weight_decay": 0.01,
+    "warmup_ratio": 0.1,
+    "seed": 42
+  }
+}
