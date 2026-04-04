@@ -91,3 +91,60 @@ def generate_candidates(input_text, direction, k=5, decoding_config=None):
         candidates.append(input_text)
 
     return candidates
+
+
+def batch_generate(texts, directions, k=1, decoding_config=None, batch_size=16):
+    """
+    Batched generation: process multiple (text, direction) pairs at once.
+
+    Returns a list of lists — one list of k candidates per input.
+    Much faster than calling generate_candidates() in a loop because
+    the GPU processes batch_size prompts simultaneously.
+    """
+    if decoding_config is None:
+        decoding_config = DEFAULT_CONFIG.copy()
+
+    prompts = [build_prompt(t, d) for t, d in zip(texts, directions)]
+    raw_k = k * 4 if k <= 3 else max(k * 2, 12)
+    all_results: list[list[str]] = []
+
+    for start in range(0, len(prompts), batch_size):
+        batch_prompts = prompts[start : start + batch_size]
+        batch_originals = texts[start : start + batch_size]
+
+        inputs = tokenizer(
+            batch_prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=256,
+        )
+        inputs = {k_: v.to(device) for k_, v in inputs.items()}
+
+        outputs = model.generate(
+            **inputs,
+            num_return_sequences=raw_k,
+            **decoding_config,
+        )
+
+        decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+
+        for i, original in enumerate(batch_originals):
+            seqs = decoded[i * raw_k : (i + 1) * raw_k]
+            candidates = []
+            seen = set()
+            for text in seqs:
+                text = " ".join(text.strip().split())
+                text = text.rstrip(" .") + "."
+                norm = _normalize(text)
+                if not text or norm in seen or _looks_too_similar(text, original):
+                    continue
+                seen.add(norm)
+                candidates.append(text)
+                if len(candidates) >= k:
+                    break
+            if not candidates:
+                candidates.append(original)
+            all_results.append(candidates)
+
+    return all_results

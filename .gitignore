@@ -2,3 +2,11 @@
 venv/
 __pycache__/
 .idea
+artifacts/classifiers/**/*.joblib
+artifacts/classifiers/**/*.pt
+artifacts/classifiers/**/*.safetensors
+artifacts/classifiers/**/config.json
+artifacts/classifiers/**/special_tokens_map.json
+artifacts/classifiers/**/tokenizer.json
+artifacts/classifiers/**/tokenizer_config.json
+artifacts/classifiers/**/vocab.txt
