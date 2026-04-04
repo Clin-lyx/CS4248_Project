@@ -1,0 +1,32 @@
+{
+  "model_name": "google/flan-t5-base",
+  "train_examples": 540,
+  "dev_examples": 60,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 1.7012883181925174,
+      "dev_loss": 1.3618247588475545
+    },
+    {
+      "epoch": 2,
+      "train_loss": 1.3824344555536905,
+      "dev_loss": 1.3032091736793519
+    },
+    {
+      "epoch": 3,
+      "train_loss": 1.2120579342047373,
+      "dev_loss": 1.3114286462465923
+    }
+  ],
+  "best_dev_loss": 1.3032091736793519,
+  "config": {
+    "batch_size": 4,
+    "epochs": 3,
+    "lr": 5e-05,
+    "weight_decay": 0.01,
+    "max_source_length": 96,
+    "max_target_length": 48,
+    "seed": 42
+  }
+}

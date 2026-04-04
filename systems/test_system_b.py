@@ -8,6 +8,7 @@ def main():
         input_text=headline,
         direction="n2s",
         k=5,
+        mode="auto",
     )
 
     print(f"\nInput: {headline}\n")
