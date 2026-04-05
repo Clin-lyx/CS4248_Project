@@ -30,11 +30,18 @@
     "report: ",
     "study: ",
     "study finds ",
+    "breaking: ",
+    "new study finds ",
+    "new study: ",
+    "new report: ",
+    "new report finds ",
+    "poll finds ",
+    "poll: ",
+    "historical archives: ",
     "experts confirm ",
     "sources confirm ",
     "nation relieved as ",
-    "area man ",
-    "area woman "
+    "area dad "
   ],
   "sarcastic_words_to_soften": {
     "heroically": "",
@@ -45,12 +52,35 @@
     "obviously": "",
     "finally": "",
     "just": "",
-    "literally": ""
+    "literally": "",
+    "apparently": "",
+    "reportedly": "",
+    "allegedly": "",
+    "supposedly": "",
+    "seemingly": "",
+    "somewhat": "",
+    "merely": "",
+    "simply": "",
+    "basically": "",
+    "totally": "",
+    "absolutely": "",
+    "completely": "",
+    "utterly": "",
+    "wildly": "",
+    "pathetically": "",
+    "desperately": "",
+    "frantically": "",
+    "hilariously": "",
+    "ridiculously": ""
   },
   "sarcastic_suffixes_to_strip": [
     "for some reason",
     "in stunning development",
     "to everyone's surprise",
-    "all of a sudden"
+    "all of a sudden",
+    "or whatever",
+    "for now",
+    "at this point",
+    "once and for all"
   ]
 }
