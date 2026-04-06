@@ -10,3 +10,8 @@ artifacts/classifiers/**/special_tokens_map.json
 artifacts/classifiers/**/tokenizer.json
 artifacts/classifiers/**/tokenizer_config.json
 artifacts/classifiers/**/vocab.txt
+.hf_cache/
+artifacts/system_b/model/
+artifacts/system_b/tmp_*.jsonl
+artifacts/system_b/dev_outputs.jsonl
+artifacts/system_b/dev_metrics.json

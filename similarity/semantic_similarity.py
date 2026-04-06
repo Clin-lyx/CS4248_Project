@@ -8,7 +8,6 @@ import numpy as np
 import torch
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from transformers import AutoModel, AutoTokenizer
 
 _DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
@@ -19,6 +18,8 @@ _DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 @lru_cache(maxsize=2)
 def _load_model(model_name: str = _DEFAULT_MODEL):
     """Load and cache tokenizer/model on the best available device."""
+    from transformers import AutoModel, AutoTokenizer
+
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModel.from_pretrained(model_name).to(_DEVICE)
     model.eval()
