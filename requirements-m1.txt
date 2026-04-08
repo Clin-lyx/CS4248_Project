@@ -4,13 +4,8 @@
 # After install, download the spaCy English model (required for NER in anchors.py):
 #   python -m spacy download en_core_web_sm
 
-# Core tables / IO
-numpy>=1.24.0,<3
-pandas>=2.0.0,<3
-tqdm>=4.66.0
-
-# Standard split (stratify) + topic-hard split (clustering on embeddings)
-scikit-learn>=1.3.0,<2
+# Shared base (numpy, pandas, scikit-learn, torch, transformers, tqdm, joblib)
+-r requirements.txt
 
 # NER for anchor extraction
 spacy>=3.7.0,<4

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from difflib import SequenceMatcher
 from functools import lru_cache
 from pathlib import Path
 
@@ -51,6 +52,13 @@ def _decode_candidates(tokenizer, outputs) -> list[str]:
     return candidates
 
 
+def _looks_too_similar(candidate: str, original: str) -> bool:
+    a, b = normalize_text(candidate), normalize_text(original)
+    if a == b:
+        return True
+    return SequenceMatcher(None, a, b).ratio() > 0.92
+
+
 def _prompt_fallback_candidates(
     input_text: str,
     direction: str,
@@ -70,6 +78,8 @@ def _prompt_fallback_candidates(
         truncation=True,
         max_length=256,
     )
+    dev = next(model.parameters()).device
+    inputs = {k_: v.to(dev) for k_, v in inputs.items()}
 
     raw_k = max(k * 4, 12)
     outputs = model.generate(
@@ -100,6 +110,8 @@ def _finetuned_candidates(
         truncation=True,
         max_length=96,
     )
+    dev = next(model.parameters()).device
+    inputs = {k_: v.to(dev) for k_, v in inputs.items()}
 
     outputs = model.generate(
         **inputs,
@@ -146,6 +158,74 @@ def generate_candidates(
         model_name=prompt_fallback_model,
         decoding_config=decoding_config,
     )
+
+
+def batch_generate(
+    texts: list[str],
+    directions: list[str],
+    k: int = 1,
+    decoding_config: dict | None = None,
+    batch_size: int = 16,
+    prompt_fallback_model: str = "google/flan-t5-base",
+) -> list[list[str]]:
+    """
+    Batched generation: process multiple (text, direction) pairs at once.
+
+    Returns a list of lists — one list of k candidates per input.
+    Much faster than calling generate_candidates() in a loop because
+    the GPU processes batch_size prompts simultaneously.
+    """
+    tokenizer, model = _load_model_and_tokenizer(prompt_fallback_model)
+    config = DEFAULT_CONFIG.copy()
+    if decoding_config:
+        config.update(decoding_config)
+    dev = next(model.parameters()).device
+
+    prompts = [build_prompt(t, d) for t, d in zip(texts, directions)]
+    raw_k = k * 4 if k <= 3 else max(k * 2, 12)
+    all_results: list[list[str]] = []
+
+    for start in range(0, len(prompts), batch_size):
+        batch_prompts = prompts[start : start + batch_size]
+        batch_originals = texts[start : start + batch_size]
+
+        inputs = tokenizer(
+            batch_prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=256,
+        )
+        inputs = {k_: v.to(dev) for k_, v in inputs.items()}
+
+        outputs = model.generate(
+            **inputs,
+            num_return_sequences=raw_k,
+            **config,
+        )
+
+        decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+
+        for i, original in enumerate(batch_originals):
+            seqs = decoded[i * raw_k : (i + 1) * raw_k]
+            candidates = []
+            seen = set()
+            for text in seqs:
+                text = " ".join(text.strip().split())
+                text = text.rstrip(" .")
+                text = text + "." if text else text
+                norm = normalize_text(text)
+                if not text or norm in seen or _looks_too_similar(text, original):
+                    continue
+                seen.add(norm)
+                candidates.append(text)
+                if len(candidates) >= k:
+                    break
+            if not candidates:
+                candidates.append(original)
+            all_results.append(candidates)
+
+    return all_results
 
 
 def rewrite_text(
