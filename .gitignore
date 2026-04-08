@@ -15,3 +15,6 @@ artifacts/system_b/model/
 artifacts/system_b/tmp_*.jsonl
 artifacts/system_b/dev_outputs.jsonl
 artifacts/system_b/dev_metrics.json
+# Local bottom-up pipeline exports (intermediate / regenerable; not versioned)
+artifacts/system_b/Bottom_Up_*.jsonl
+artifacts/system_b/bottom_up_*.jsonl
