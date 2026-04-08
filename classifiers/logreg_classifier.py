@@ -25,6 +25,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from classifiers.common import (
     compute_metrics,
+    default_classifier_run_dir,
     format_prediction,
     load_split_frames,
     load_texts_for_inference,
@@ -47,7 +48,7 @@ def train(
     Returns the metrics dict with 'dev' and 'test' keys.
     """
     if output_dir is None:
-        output_dir = ARTIFACT_ROOT
+        output_dir = default_classifier_run_dir(ARTIFACT_ROOT, split)
 
     train_df, dev_df, test_df = load_split_frames(text_col, split=split)
 
@@ -92,6 +93,7 @@ def train(
         "test": compute_metrics(y_test, test_prob),
         "config": {
             "model_type": "logreg",
+            "split": split,
             "text_col": text_col,
             "max_features": max_features,
             "c_value": c_value,
@@ -112,9 +114,9 @@ def train(
 
 
 def predict(model_dir: Path = None, texts: list[str] = None) -> list[dict[str, Any]]:
-    """Run inference on texts."""
+    """Run inference on texts. Default model dir: ``standard`` split checkpoint."""
     if model_dir is None:
-        model_dir = ARTIFACT_ROOT
+        model_dir = default_classifier_run_dir(ARTIFACT_ROOT, "standard")
     if texts is None:
         texts = []
     
@@ -136,14 +138,15 @@ def main() -> None:
     import sys
     
     if len(sys.argv) < 2:
-        print("Usage: python logreg_classifier.py train")
+        print("Usage: python logreg_classifier.py train [standard|topic_hard]")
         print("       python logreg_classifier.py predict <text>")
         return
     
     cmd = sys.argv[1]
     
     if cmd == "train":
-        train()
+        split = sys.argv[2] if len(sys.argv) > 2 else "standard"
+        train(split=split)
     elif cmd == "predict":
         if len(sys.argv) < 3:
             print("Usage: python logreg_classifier.py predict <text>")

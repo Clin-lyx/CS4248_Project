@@ -27,7 +27,7 @@ from systems.system_a.template_utils import preserves_anchors
 
 
 def evaluate_system_b(
-    split_name: str = "dev",
+    split_name: str = "test",
     split: str = "standard",
     limit: int = 0,
     output_path: str | Path | None = None,
@@ -37,7 +37,7 @@ def evaluate_system_b(
     if limit > 0:
         subset = subset.head(limit).reset_index(drop=True)
 
-    style_scorer = load_style_scorer()
+    style_scorer = load_style_scorer(split=split)
     outputs: list[dict] = []
     similarities: list[float] = []
     anchor_flags: list[bool] = []
@@ -95,7 +95,7 @@ def evaluate_system_b(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Evaluate fine-tuned System B outputs.")
-    parser.add_argument("--split-name", default="dev")
+    parser.add_argument("--split-name", default="test")
     parser.add_argument("--split-strategy", default="standard")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--output", default=None)

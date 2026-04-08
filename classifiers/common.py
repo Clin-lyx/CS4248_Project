@@ -16,7 +16,14 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from data.splits import get_all_splits, get_split_df, load_cleaned_data
+from data.splits import SPLIT_REGISTRY, get_all_splits, get_split_df, load_cleaned_data
+
+
+def default_classifier_run_dir(artifact_kind_root: Path, split: str) -> Path:
+    """Directory for saved weights for this split (matches ``batch_style_probs`` layout)."""
+    if split not in SPLIT_REGISTRY:
+        raise ValueError(f"Unknown split {split!r}. Registered: {sorted(SPLIT_REGISTRY)}")
+    return artifact_kind_root / split
 
 
 def compute_metrics(y_true: np.ndarray, prob_pos: np.ndarray, threshold: float = 0.5) -> dict[str, float]:
