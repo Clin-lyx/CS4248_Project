@@ -11,18 +11,27 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from similarity.semantic_similarity import batch_semantic_similarity
 from systems.system_b_utils import (
     MODEL_DIR,
     count_true,
-    semantic_similarity_score,
     safe_mean,
-    score_style_probability,
     target_style_passes,
     load_anchored_data,
     select_subset,
 )
 from systems.system_a.template_utils import preserves_anchors
 from systems.system_c_rer_pipeline import DEFAULT_PROMPT_FALLBACK_MODEL, run_system_c
+
+
+def _batch_style_probabilities(texts: list[str], scorer) -> list[float | None]:
+    if scorer is None:
+        return [None] * len(texts)
+    try:
+        probs = scorer.predict_proba(texts)
+        return [float(row[1]) for row in probs]
+    except Exception:
+        return [None] * len(texts)
 
 
 def _load_best_rows_from_jsonl(path: str | Path) -> pd.DataFrame:
@@ -109,6 +118,26 @@ def evaluate_system_c(
     source_df = load_anchored_data()
     subset = select_subset(source_df, split_name=split_name, split=split)[["id", "anchors"]]
     anchors_by_id = dict(zip(subset["id"], subset["anchors"]))
+    style_scorer = None
+
+    target_texts = best_rows["output_text"].astype(str).tolist()
+    source_texts = best_rows["input_text"].astype(str).tolist()
+    scores_present = "scores" in best_rows.columns
+    needs_similarity = (not scores_present) or best_rows["scores"].apply(
+        lambda v: not isinstance(v, dict) or v.get("semantic_similarity") is None
+    ).any()
+    needs_style = (not scores_present) or best_rows["scores"].apply(
+        lambda v: not isinstance(v, dict) or v.get("style_prob_sarcastic") is None
+    ).any()
+
+    batched_similarities = batch_semantic_similarity(source_texts, target_texts).tolist() if needs_similarity else []
+    if needs_style:
+        from systems.system_b_utils import load_style_scorer
+
+        style_scorer = load_style_scorer(split=split)
+        batched_probs = _batch_style_probabilities(target_texts, style_scorer)
+    else:
+        batched_probs = []
 
     scored_rows: list[dict] = []
     similarities: list[float] = []
@@ -121,11 +150,11 @@ def evaluate_system_c(
         target_text = row["output_text"]
         prob = scores.get("style_prob_sarcastic")
         if prob is None:
-            prob = score_style_probability(target_text)
+            prob = batched_probs[len(scored_rows)]
 
         similarity = scores.get("semantic_similarity")
         if similarity is None:
-            similarity = semantic_similarity_score(row["input_text"], target_text)
+            similarity = batched_similarities[len(scored_rows)]
 
         anchor_raw = scores.get("anchors_preserved")
         if anchor_raw is None:

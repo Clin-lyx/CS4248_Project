@@ -13,6 +13,17 @@ from generation.decoding_configs import DEFAULT_CONFIG
 from generation.prompts import build_prompt
 from systems.system_b_utils import MODEL_DIR, build_seq2seq_input, normalize_text
 
+try:
+    import torch
+except ImportError:  # pragma: no cover - torch is expected in runtime envs
+    torch = None
+
+
+def _best_device():
+    if torch is not None and torch.cuda.is_available():
+        return torch.device("cuda")
+    return torch.device("cpu") if torch is not None else "cpu"
+
 
 @lru_cache(maxsize=4)
 def _load_model_and_tokenizer(model_name_or_path: str):
@@ -25,7 +36,7 @@ def _load_model_and_tokenizer(model_name_or_path: str):
         ) from exc
 
     tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name_or_path)
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name_or_path).to(_best_device())
     model.eval()
     return tokenizer, model
 
