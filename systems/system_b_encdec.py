@@ -122,6 +122,65 @@ def _finetuned_candidates(
     return candidates[:k] or [input_text]
 
 
+def _batch_generate_from_model(
+    *,
+    tokenizer,
+    model,
+    encoded_inputs: list[str],
+    originals: list[str],
+    k: int,
+    decoding_config: dict | None,
+    max_length: int,
+    batch_size: int,
+) -> list[list[str]]:
+    config = DEFAULT_CONFIG.copy()
+    if decoding_config:
+        config.update(decoding_config)
+    dev = next(model.parameters()).device
+    raw_k = k * 4 if k <= 3 else max(k * 2, 12)
+    all_results: list[list[str]] = []
+
+    for start in range(0, len(encoded_inputs), batch_size):
+        batch_inputs = encoded_inputs[start : start + batch_size]
+        batch_originals = originals[start : start + batch_size]
+        inputs = tokenizer(
+            batch_inputs,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=max_length,
+        )
+        inputs = {k_: v.to(dev) for k_, v in inputs.items()}
+
+        outputs = model.generate(
+            **inputs,
+            num_return_sequences=raw_k,
+            **config,
+        )
+        decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+
+        for i, original in enumerate(batch_originals):
+            seqs = decoded[i * raw_k : (i + 1) * raw_k]
+            candidates = []
+            seen = set()
+            for text in seqs:
+                text = " ".join(text.strip().split())
+                text = text.rstrip(" .")
+                text = text + "." if text else text
+                norm = normalize_text(text)
+                if not text or norm in seen or _looks_too_similar(text, original):
+                    continue
+                seen.add(norm)
+                candidates.append(text)
+                if len(candidates) >= k:
+                    break
+            if not candidates:
+                candidates.append(original)
+            all_results.append(candidates)
+
+    return all_results
+
+
 def generate_candidates(
     input_text: str,
     direction: str,
@@ -177,77 +236,44 @@ def batch_generate(
     Much faster than calling generate_candidates() in a loop because
     the GPU processes batch_size prompts simultaneously.
     """
-    resolved_model_dir = Path(finetuned_model_dir)
     if mode not in {"auto", "finetuned_local", "prompt_fallback"}:
         raise ValueError(f"Unknown System B mode: {mode}")
 
-    if mode in {"auto", "finetuned_local"} and resolved_model_dir.exists():
-        model_name_or_path = str(resolved_model_dir)
-        use_finetuned = True
-    elif mode == "finetuned_local":
+    resolved_model_dir = Path(finetuned_model_dir)
+    use_finetuned = mode in {"auto", "finetuned_local"} and resolved_model_dir.exists()
+
+    if use_finetuned:
+        tokenizer, model = _load_model_and_tokenizer(str(resolved_model_dir))
+        encoded_inputs = [build_seq2seq_input(t, d) for t, d in zip(texts, directions)]
+        return _batch_generate_from_model(
+            tokenizer=tokenizer,
+            model=model,
+            encoded_inputs=encoded_inputs,
+            originals=texts,
+            k=k,
+            decoding_config=decoding_config,
+            max_length=96,
+            batch_size=batch_size,
+        )
+
+    if mode == "finetuned_local" and not resolved_model_dir.exists():
         raise FileNotFoundError(
             f"Fine-tuned System B model not found at {resolved_model_dir}. "
             "Train it with systems/system_b_train.py first."
         )
-    else:
-        model_name_or_path = prompt_fallback_model
-        use_finetuned = False
 
-    tokenizer, model = _load_model_and_tokenizer(model_name_or_path)
-    config = DEFAULT_CONFIG.copy()
-    if decoding_config:
-        config.update(decoding_config)
-    dev = next(model.parameters()).device
-
-    prompts = (
-        [build_seq2seq_input(t, d) for t, d in zip(texts, directions)]
-        if use_finetuned
-        else [build_prompt(t, d) for t, d in zip(texts, directions)]
+    tokenizer, model = _load_model_and_tokenizer(prompt_fallback_model)
+    prompts = [build_prompt(t, d) for t, d in zip(texts, directions)]
+    return _batch_generate_from_model(
+        tokenizer=tokenizer,
+        model=model,
+        encoded_inputs=prompts,
+        originals=texts,
+        k=k,
+        decoding_config=decoding_config,
+        max_length=256,
+        batch_size=batch_size,
     )
-    raw_k = k * 4 if k <= 3 else max(k * 2, 12)
-    all_results: list[list[str]] = []
-
-    for start in range(0, len(prompts), batch_size):
-        batch_prompts = prompts[start : start + batch_size]
-        batch_originals = texts[start : start + batch_size]
-
-        inputs = tokenizer(
-            batch_prompts,
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=96 if use_finetuned else 256,
-        )
-        inputs = {k_: v.to(dev) for k_, v in inputs.items()}
-
-        outputs = model.generate(
-            **inputs,
-            num_return_sequences=raw_k,
-            **config,
-        )
-
-        decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-
-        for i, original in enumerate(batch_originals):
-            seqs = decoded[i * raw_k : (i + 1) * raw_k]
-            candidates = []
-            seen = set()
-            for text in seqs:
-                text = " ".join(text.strip().split())
-                text = text.rstrip(" .")
-                text = text + "." if text else text
-                norm = normalize_text(text)
-                if not text or norm in seen or _looks_too_similar(text, original):
-                    continue
-                seen.add(norm)
-                candidates.append(text)
-                if len(candidates) >= k:
-                    break
-            if not candidates:
-                candidates.append(original)
-            all_results.append(candidates)
-
-    return all_results
 
 
 def rewrite_text(

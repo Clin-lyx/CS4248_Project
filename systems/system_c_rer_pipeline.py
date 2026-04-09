@@ -14,7 +14,11 @@ from generation.prompts import build_prompt
 from rerank.rerank import DEFAULT_RERANK_CONFIG, rerank_candidates
 from retrieval.build_index import build_retrieval_index
 from retrieval.retrieve import retrieve_neighbors
-from systems.system_b_encdec import generate_candidates
+from systems.system_a.template_utils import (
+    neutral_to_sarcastic_candidates,
+    sarcastic_to_neutral_candidates,
+)
+from systems.system_b_encdec import batch_generate, generate_candidates
 from systems.system_b_utils import (
     MODEL_DIR,
     infer_direction,
@@ -270,6 +274,103 @@ def build_candidate_pool(
     return all_candidates
 
 
+def build_candidate_pools_no_retrieval(
+    rows: list[dict[str, Any]],
+    *,
+    k_generate: int,
+    system_b_mode: str,
+    finetuned_model_dir: str | Path,
+    prompt_fallback_model: str,
+    batch_size: int = 16,
+) -> list[list[dict[str, Any]]]:
+    texts = [row["text"] for row in rows]
+    directions = [infer_direction(int(row["label"])) for row in rows]
+
+    all_candidate_pools = []
+    seen_norms_per_row: list[set[str]] = [set() for _ in rows]
+    for _ in rows:
+        all_candidate_pools.append([])
+
+    for cfg_name, cfg in DECODE_CONFIG_BANK.items():
+        try:
+            batched_outputs = batch_generate(
+                texts=texts,
+                directions=directions,
+                k=k_generate,
+                decoding_config=cfg,
+                batch_size=batch_size,
+                mode=system_b_mode,
+                finetuned_model_dir=finetuned_model_dir,
+                prompt_fallback_model=prompt_fallback_model,
+            )
+        except Exception:
+            batched_outputs = [[] for _ in rows]
+
+        for idx, outputs in enumerate(batched_outputs):
+            seen_norms = seen_norms_per_row[idx]
+            for text in outputs:
+                norm = normalize_text(text)
+                if not norm or norm in seen_norms:
+                    continue
+                seen_norms.add(norm)
+                all_candidate_pools[idx].append(
+                    {
+                        "output_text": text,
+                        "candidate_source": "generator_only",
+                        "metadata": {
+                            "candidate_source": "generator_only",
+                            "decoding_config_name": cfg_name,
+                            "retrieved_ids": [],
+                            "retrieved_texts": [],
+                        },
+                    }
+                )
+
+    for idx, row in enumerate(rows):
+        direction = directions[idx]
+        anchor_dict = row.get("anchors", {})
+        seen_norms = seen_norms_per_row[idx]
+        edit_candidates = _retrieval_edit_candidates(
+            row["text"],
+            direction,
+            [],
+            anchor_dict=anchor_dict,
+        )
+        for text in edit_candidates:
+            norm = normalize_text(text)
+            if not norm or norm in seen_norms:
+                continue
+            seen_norms.add(norm)
+            all_candidate_pools[idx].append(
+                {
+                    "output_text": text,
+                    "candidate_source": "retrieval_edit",
+                    "metadata": {
+                        "candidate_source": "retrieval_edit",
+                        "decoding_config_name": None,
+                        "retrieved_ids": [],
+                        "retrieved_texts": [],
+                    },
+                }
+            )
+
+        if not all_candidate_pools[idx]:
+            all_candidate_pools[idx].append(
+                {
+                    "output_text": row["text"],
+                    "candidate_source": "fallback_identity",
+                    "metadata": {
+                        "candidate_source": "fallback_identity",
+                        "decoding_config_name": None,
+                        "retrieved_ids": [],
+                        "retrieved_texts": [],
+                    },
+                }
+            )
+
+    return all_candidate_pools
+
+
 def _make_results_paths(
     split_name: str,
     split_strategy: str,
@@ -313,12 +414,14 @@ def run_system_c(
     force_rebuild_index: bool = False,
     tag: str | None = None,
 ) -> tuple[Path, Path, Path]:
-    build_retrieval_index(split=split_strategy, force=force_rebuild_index)
+    if not no_retrieval:
+        build_retrieval_index(split=split_strategy, force=force_rebuild_index)
 
     df = load_anchored_data()
     subset = select_subset(df, split_name=split_name, split=split_strategy)
     if limit and limit > 0:
         subset = subset.head(limit).reset_index(drop=True)
+    subset_rows = subset.to_dict("records")
 
     style_scorer = load_style_scorer()
     rerank_config = dict(DEFAULT_RERANK_CONFIG)
@@ -328,7 +431,17 @@ def run_system_c(
     best_rows: list[dict[str, Any]] = []
     candidate_rows: list[dict[str, Any]] = []
 
-    for _, row in subset.iterrows():
+    prebuilt_candidate_pools = None
+    if no_retrieval:
+        prebuilt_candidate_pools = build_candidate_pools_no_retrieval(
+            subset_rows,
+            k_generate=k_generate,
+            system_b_mode=system_b_mode,
+            finetuned_model_dir=finetuned_model_dir,
+            prompt_fallback_model=prompt_fallback_model,
+        )
+
+    for row_idx, row in enumerate(subset_rows):
         input_text = row["text"]
         direction = infer_direction(int(row["label"]))
         anchor_dict = row.get("anchors", {})
@@ -340,16 +453,19 @@ def run_system_c(
             exclude_ids={row["id"]},
         )
 
-        candidates = build_candidate_pool(
-            input_text=input_text,
-            direction=direction,
-            retrieved=retrieved,
-            anchor_dict=anchor_dict,
-            k_generate=k_generate,
-            system_b_mode=system_b_mode,
-            finetuned_model_dir=finetuned_model_dir,
-            prompt_fallback_model=prompt_fallback_model,
-        )
+        if no_retrieval and prebuilt_candidate_pools is not None:
+            candidates = prebuilt_candidate_pools[row_idx]
+        else:
+            candidates = build_candidate_pool(
+                input_text=input_text,
+                direction=direction,
+                retrieved=retrieved,
+                anchor_dict=anchor_dict,
+                k_generate=k_generate,
+                system_b_mode=system_b_mode,
+                finetuned_model_dir=finetuned_model_dir,
+                prompt_fallback_model=prompt_fallback_model,
+            )
 
         if no_rerank:
             ranked = []
