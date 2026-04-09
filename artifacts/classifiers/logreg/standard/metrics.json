@@ -15,6 +15,7 @@
   },
   "config": {
     "model_type": "logreg",
+    "split": "standard",
     "text_col": "text",
     "max_features": 50000,
     "c_value": 1.0

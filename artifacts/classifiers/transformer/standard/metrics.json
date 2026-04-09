@@ -14,6 +14,7 @@
     "roc_auc": 0.9752419569656969
   },
   "train_config": {
+    "split": "standard",
     "model_name": "distilbert-base-uncased",
     "text_col": "text",
     "max_length": 64,
