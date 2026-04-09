@@ -11,19 +11,29 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from systems.system_b_encdec import rewrite_text
+from similarity.semantic_similarity import batch_semantic_similarity
+from systems.system_b_encdec import batch_generate
 from systems.system_b_utils import (
     ARTIFACT_ROOT,
     count_true,
     infer_direction,
     load_anchored_data,
     load_style_scorer,
+    MODEL_DIR,
     safe_mean,
-    score_style_probability,
-    semantic_similarity_score,
     select_subset,
 )
 from systems.system_a.template_utils import preserves_anchors
+
+
+def _batch_style_probabilities(texts: list[str], scorer) -> list[float | None]:
+    if scorer is None:
+        return [None] * len(texts)
+    try:
+        probs = scorer.predict_proba(texts)
+        return [float(row[1]) for row in probs]
+    except Exception:
+        return [None] * len(texts)
 
 
 def evaluate_system_b(
@@ -31,6 +41,10 @@ def evaluate_system_b(
     split: str = "standard",
     limit: int = 0,
     output_path: str | Path | None = None,
+    *,
+    batch_size: int = 16,
+    system_b_mode: str = "auto",
+    finetuned_model_dir: str | Path = MODEL_DIR,
 ) -> tuple[Path, Path]:
     df = load_anchored_data()
     subset = select_subset(df, split_name=split_name, split=split)
@@ -38,17 +52,30 @@ def evaluate_system_b(
         subset = subset.head(limit).reset_index(drop=True)
 
     style_scorer = load_style_scorer(split=split)
+    texts = subset["text"].astype(str).tolist()
+    directions = [infer_direction(int(label)) for label in subset["label"].tolist()]
+    generated = batch_generate(
+        texts,
+        directions,
+        k=1,
+        batch_size=batch_size,
+        mode=system_b_mode,
+        finetuned_model_dir=finetuned_model_dir,
+    )
+    rewritten_texts = [candidates[0] if candidates else original for candidates, original in zip(generated, texts)]
+    similarities = batch_semantic_similarity(texts, rewritten_texts).tolist()
+    probs = _batch_style_probabilities(rewritten_texts, style_scorer)
+
     outputs: list[dict] = []
-    similarities: list[float] = []
     anchor_flags: list[bool] = []
     style_flags: list[bool] = []
 
-    for _, row in subset.iterrows():
-        direction = infer_direction(int(row["label"]))
-        rewritten = rewrite_text(row["text"], direction=direction)
-        similarity = semantic_similarity_score(row["text"], rewritten)
+    for idx, row in subset.iterrows():
+        direction = directions[idx]
+        rewritten = rewritten_texts[idx]
+        similarity = float(similarities[idx])
         anchors_ok = preserves_anchors(row.get("anchors", {}), rewritten)
-        prob = score_style_probability(rewritten, scorer=style_scorer)
+        prob = probs[idx]
 
         style_ok = True
         if prob is not None:
@@ -66,7 +93,6 @@ def evaluate_system_b(
                 "target_style_pass": style_ok,
             }
         )
-        similarities.append(similarity)
         anchor_flags.append(anchors_ok)
         style_flags.append(style_ok)
 
@@ -99,6 +125,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--split-strategy", default="standard")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--output", default=None)
+    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--system-b-mode", default="auto", choices=["auto", "finetuned_local", "prompt_fallback"])
+    parser.add_argument("--finetuned-model-dir", default=str(MODEL_DIR))
     return parser
 
 
@@ -110,6 +139,9 @@ def main() -> None:
         split=args.split_strategy,
         limit=args.limit,
         output_path=args.output,
+        batch_size=args.batch_size,
+        system_b_mode=args.system_b_mode,
+        finetuned_model_dir=args.finetuned_model_dir,
     )
 
 
