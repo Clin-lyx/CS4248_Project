@@ -26,6 +26,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from classifiers.common import (
     compute_metrics,
+    default_classifier_run_dir,
     format_prediction,
     load_split_frames,
     write_predictions,
@@ -107,7 +108,7 @@ def train(
     y_test = test_df["label"].astype(int).tolist()
 
     if output_dir is None:
-        output_dir = ARTIFACT_ROOT
+        output_dir = default_classifier_run_dir(ARTIFACT_ROOT, split)
     model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=2)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
@@ -173,6 +174,7 @@ def train(
         "dev": dev_metrics,
         "test": test_metrics,
         "train_config": {
+            "split": split,
             "model_name": model_name,
             "text_col": text_col,
             "max_length": max_length,
@@ -198,27 +200,19 @@ def predict(
     texts: list[str] = None,
     max_length: int = 64,
     batch_size: int = 16,
-    fallback_model_name: str = "distilbert-base-uncased",
 ) -> list[dict[str, Any]]:
     if model_dir is None:
-        model_dir = ARTIFACT_ROOT
+        model_dir = default_classifier_run_dir(ARTIFACT_ROOT, "standard")
     if texts is None:
         texts = []
 
-    if model_dir.exists():
-        tokenizer = AutoTokenizer.from_pretrained(model_dir)
-        model = AutoModelForSequenceClassification.from_pretrained(model_dir)
-    else:
-        print(
-            f"Local transformer model directory not found: {model_dir}. "
-            f"Falling back to pretrained model '{fallback_model_name}'."
-        )
-        torch.manual_seed(42)
-        tokenizer = AutoTokenizer.from_pretrained(fallback_model_name)
-        model = AutoModelForSequenceClassification.from_pretrained(
-            fallback_model_name,
-            num_labels=2,
-        )
+    if not model_dir.exists():
+        raise FileNotFoundError(f"Transformer model directory not found: {model_dir}")
+    if not (model_dir / "config.json").is_file():
+        raise FileNotFoundError(f"Transformer checkpoint missing config.json: {model_dir}")
+
+    tokenizer = AutoTokenizer.from_pretrained(model_dir)
+    model = AutoModelForSequenceClassification.from_pretrained(model_dir)
 
     ds = HeadlineDataset(texts, [0] * len(texts), tokenizer, max_length=max_length)
     loader = DataLoader(ds, batch_size=batch_size, shuffle=False)
@@ -247,14 +241,15 @@ def main() -> None:
     import sys
     
     if len(sys.argv) < 2:
-        print("Usage: python transformer_classifier.py train")
+        print("Usage: python transformer_classifier.py train [standard|topic_hard]")
         print("       python transformer_classifier.py predict <text>")
         return
     
     cmd = sys.argv[1]
     
     if cmd == "train":
-        train()
+        split = sys.argv[2] if len(sys.argv) > 2 else "standard"
+        train(split=split)
     elif cmd == "predict":
         if len(sys.argv) < 3:
             print("Usage: python transformer_classifier.py predict <text>")

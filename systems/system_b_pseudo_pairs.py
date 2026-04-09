@@ -183,9 +183,10 @@ def filter_pairs(
     min_target_style_confidence: float = 0.65,
     max_edit_ratio: float = 0.7,
     skip_style_filter: bool = False,
+    split: str = "standard",
 ) -> Path:
     raw_records = read_jsonl(input_path)
-    style_scorer = None if skip_style_filter else load_style_scorer()
+    style_scorer = None if skip_style_filter else load_style_scorer(split=split)
 
     accepted: list[dict[str, Any]] = []
     for record in raw_records:
@@ -196,8 +197,16 @@ def filter_pairs(
 
         similarity = semantic_similarity_score(source_text, target_text)
         edit_ratio = normalized_token_edit_distance(source_text, target_text)
-        source_prob = finite_or_none(score_style_probability(source_text, scorer=style_scorer))
-        target_prob = finite_or_none(score_style_probability(target_text, scorer=style_scorer))
+        source_prob = (
+            finite_or_none(score_style_probability(source_text, scorer=style_scorer))
+            if style_scorer is not None
+            else None
+        )
+        target_prob = (
+            finite_or_none(score_style_probability(target_text, scorer=style_scorer))
+            if style_scorer is not None
+            else None
+        )
         anchors_ok = preserves_anchors(anchors, target_text)
 
         rejection_reason = None
@@ -250,6 +259,11 @@ def build_parser() -> argparse.ArgumentParser:
     filt = sub.add_parser("filter", help="Filter raw pseudo-pairs.")
     filt.add_argument("--input", default=str(RAW_PAIRS_PATH))
     filt.add_argument("--output", default=str(FILTERED_PAIRS_PATH))
+    filt.add_argument(
+        "--split-strategy",
+        default="standard",
+        help="Which split-aware classifier checkpoint to use for the style filter.",
+    )
     filt.add_argument("--min-similarity", type=float, default=0.55)
     filt.add_argument("--min-target-style-confidence", type=float, default=0.65)
     filt.add_argument("--max-edit-ratio", type=float, default=0.7)
@@ -281,6 +295,7 @@ def main() -> None:
             min_target_style_confidence=args.min_target_style_confidence,
             max_edit_ratio=args.max_edit_ratio,
             skip_style_filter=args.skip_style_filter,
+            split=args.split_strategy,
         )
         return
 

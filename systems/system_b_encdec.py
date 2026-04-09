@@ -166,6 +166,8 @@ def batch_generate(
     k: int = 1,
     decoding_config: dict | None = None,
     batch_size: int = 16,
+    mode: str = "auto",
+    finetuned_model_dir: str | Path = MODEL_DIR,
     prompt_fallback_model: str = "google/flan-t5-base",
 ) -> list[list[str]]:
     """
@@ -175,13 +177,33 @@ def batch_generate(
     Much faster than calling generate_candidates() in a loop because
     the GPU processes batch_size prompts simultaneously.
     """
-    tokenizer, model = _load_model_and_tokenizer(prompt_fallback_model)
+    resolved_model_dir = Path(finetuned_model_dir)
+    if mode not in {"auto", "finetuned_local", "prompt_fallback"}:
+        raise ValueError(f"Unknown System B mode: {mode}")
+
+    if mode in {"auto", "finetuned_local"} and resolved_model_dir.exists():
+        model_name_or_path = str(resolved_model_dir)
+        use_finetuned = True
+    elif mode == "finetuned_local":
+        raise FileNotFoundError(
+            f"Fine-tuned System B model not found at {resolved_model_dir}. "
+            "Train it with systems/system_b_train.py first."
+        )
+    else:
+        model_name_or_path = prompt_fallback_model
+        use_finetuned = False
+
+    tokenizer, model = _load_model_and_tokenizer(model_name_or_path)
     config = DEFAULT_CONFIG.copy()
     if decoding_config:
         config.update(decoding_config)
     dev = next(model.parameters()).device
 
-    prompts = [build_prompt(t, d) for t, d in zip(texts, directions)]
+    prompts = (
+        [build_seq2seq_input(t, d) for t, d in zip(texts, directions)]
+        if use_finetuned
+        else [build_prompt(t, d) for t, d in zip(texts, directions)]
+    )
     raw_k = k * 4 if k <= 3 else max(k * 2, 12)
     all_results: list[list[str]] = []
 
@@ -194,7 +216,7 @@ def batch_generate(
             return_tensors="pt",
             padding=True,
             truncation=True,
-            max_length=256,
+            max_length=96 if use_finetuned else 256,
         )
         inputs = {k_: v.to(dev) for k_, v in inputs.items()}
 

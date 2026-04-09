@@ -26,6 +26,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from classifiers.common import (
     compute_metrics,
+    default_classifier_run_dir,
     format_prediction,
     load_split_frames,
     write_predictions,
@@ -156,7 +157,7 @@ def train(
 ) -> dict:
     """Train BiLSTM classifier. Returns the metrics dict."""
     if output_dir is None:
-        output_dir = ARTIFACT_ROOT
+        output_dir = default_classifier_run_dir(ARTIFACT_ROOT, split)
 
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -232,6 +233,7 @@ def train(
         "vocab": vocab,
         "config": {
             "model_type": "rnn",
+            "split": split,
             "text_col": text_col,
             "emb_dim": emb_dim,
             "hidden_dim": hidden_dim,
@@ -245,6 +247,7 @@ def train(
         "dev": dev_metrics,
         "test": test_metrics,
         "train_config": {
+            "split": split,
             "epochs": epochs,
             "batch_size": batch_size,
             "lr": lr,
@@ -261,7 +264,7 @@ def train(
 
 def predict(model_dir: Path = None, texts: list[str] = None, batch_size: int = 64) -> list[dict[str, Any]]:
     if model_dir is None:
-        model_dir = ARTIFACT_ROOT
+        model_dir = default_classifier_run_dir(ARTIFACT_ROOT, "standard")
     if texts is None:
         texts = []
     
@@ -304,14 +307,15 @@ def main() -> None:
     import sys
     
     if len(sys.argv) < 2:
-        print("Usage: python rnn_classifier.py train")
+        print("Usage: python rnn_classifier.py train [standard|topic_hard]")
         print("       python rnn_classifier.py predict <text>")
         return
     
     cmd = sys.argv[1]
     
     if cmd == "train":
-        train()
+        split = sys.argv[2] if len(sys.argv) > 2 else "standard"
+        train(split=split)
     elif cmd == "predict":
         if len(sys.argv) < 3:
             print("Usage: python rnn_classifier.py predict <text>")

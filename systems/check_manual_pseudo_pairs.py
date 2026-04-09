@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from collections import Counter
@@ -38,8 +39,20 @@ def load_train_ids() -> set[str]:
     return set(payload["train"])
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Validate manual pseudo-pair JSONL files.")
+    parser.add_argument(
+        "--path",
+        type=Path,
+        default=FILTERED_PAIRS_PATH,
+        help="Path to the pseudo-pair JSONL file to validate.",
+    )
+    return parser.parse_args()
+
+
 def main() -> int:
-    path = Path(FILTERED_PAIRS_PATH)
+    args = parse_args()
+    path = Path(args.path)
     rows = []
     with path.open("r", encoding="utf-8") as f:
         for line_no, line in enumerate(f, start=1):
