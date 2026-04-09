@@ -15,14 +15,14 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from data.splits import SPLIT_REGISTRY, get_split_df, load_cleaned_data
+from data.splits import SPLIT_REGISTRY, get_split_df
 from systems.system_a.template_utils import preserves_anchors
 
 ARTIFACT_ROOT = PROJECT_ROOT / "artifacts" / "system_b"
 RAW_PAIRS_PATH = ARTIFACT_ROOT / "pseudo_pairs_raw.jsonl"
 FILTERED_PAIRS_PATH = ARTIFACT_ROOT / "pseudo_pairs_filtered.jsonl"
 MODEL_DIR = ARTIFACT_ROOT / "model"
-LOGREG_MODEL_PATH = PROJECT_ROOT / "artifacts" / "classifiers" / "logreg" / "model.joblib"
+LOGREG_ARTIFACT_ROOT = PROJECT_ROOT / "artifacts" / "classifiers" / "logreg"
 
 
 def ensure_parent_dir(path: str | Path) -> Path:
@@ -157,26 +157,53 @@ def semantic_similarity_score(text_a: str, text_b: str) -> float:
     return float(semantic_similarity(text_a, text_b))
 
 
-def load_style_scorer(model_path: str | Path = LOGREG_MODEL_PATH):
-    resolved = Path(model_path)
+def default_style_scorer_path(split: str = "standard") -> Path:
+    if split not in SPLIT_REGISTRY:
+        raise KeyError(f"Unknown split '{split}'. Available: {sorted(SPLIT_REGISTRY)}")
+    return LOGREG_ARTIFACT_ROOT / split / "model.joblib"
+
+
+def load_style_scorer(
+    model_path: str | Path | None = None,
+    *,
+    split: str = "standard",
+    strict: bool = True,
+):
+    resolved = Path(model_path) if model_path is not None else default_style_scorer_path(split)
     if not resolved.exists():
+        if strict:
+            raise FileNotFoundError(
+                f"Style scorer not found: {resolved}. "
+                f"Train the split-aware LogReg classifier first, e.g. "
+                f"`py -3 classifiers/train_classifiers.py --split {split} --models logreg`."
+            )
         return None
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             return joblib.load(resolved)
-    except Exception:
+    except Exception as exc:
+        if strict:
+            raise RuntimeError(f"Failed to load style scorer from {resolved}") from exc
         return None
 
 
-def score_style_probability(text: str, scorer=None) -> float | None:
+def score_style_probability(
+    text: str,
+    scorer=None,
+    *,
+    split: str = "standard",
+    strict: bool = True,
+) -> float | None:
     if scorer is None:
-        scorer = load_style_scorer()
+        scorer = load_style_scorer(split=split, strict=strict)
     if scorer is None:
         return None
     try:
         return float(scorer.predict_proba([text])[0][1])
-    except Exception:
+    except Exception as exc:
+        if strict:
+            raise RuntimeError("Style scorer failed during predict_proba().") from exc
         return None
 
 
