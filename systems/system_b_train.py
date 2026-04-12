@@ -40,6 +40,16 @@ class PseudoPairDataset(Dataset):
 
 
 def split_rows(rows: list[dict], dev_ratio: float, seed: int) -> tuple[list[dict], list[dict]]:
+    training_split_rows = [r for r in rows if r.get("training_split") in {"train", "dev"}]
+    if training_split_rows:
+        train_rows = [r for r in training_split_rows if r.get("training_split") == "train"]
+        dev_rows = [r for r in training_split_rows if r.get("training_split") == "dev"]
+        if not train_rows:
+            raise ValueError("No training rows found in training_split='train'.")
+        if not dev_rows:
+            raise ValueError("No dev rows found in training_split='dev'.")
+        return train_rows, dev_rows
+
     train_rows = [r for r in rows if r.get("original_split") == "train"]
     dev_rows = [r for r in rows if r.get("original_split") == "dev"]
 
