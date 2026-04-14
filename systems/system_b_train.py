@@ -15,10 +15,12 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from systems.system_b_utils import (
-    FILTERED_PAIRS_PATH,
-    MODEL_DIR,
     build_seq2seq_input,
+    default_model_dir,
+    default_pair_dataset_path,
+    default_train_metrics_path,
     read_jsonl,
+    SYSTEM_B_SPLIT_CHOICES,
 )
 
 
@@ -57,7 +59,7 @@ def split_rows(rows: list[dict], dev_ratio: float, seed: int) -> tuple[list[dict
         return train_rows, dev_rows
 
     if not train_rows:
-        raise ValueError("No training rows found in filtered pseudo-pairs.")
+        raise ValueError("No training rows found in the selected pseudo-pair file.")
 
     rng = random.Random(seed)
     shuffled = train_rows[:]
@@ -109,8 +111,8 @@ def evaluate_loss(model, loader, device) -> float:
 
 
 def train_system_b(
-    input_path: str | Path = FILTERED_PAIRS_PATH,
-    output_dir: str | Path = MODEL_DIR,
+    input_path: str | Path | None = None,
+    output_dir: str | Path | None = None,
     model_name: str = "google/flan-t5-base",
     batch_size: int = 8,
     epochs: int = 1,
@@ -120,6 +122,7 @@ def train_system_b(
     max_target_length: int = 48,
     dev_ratio: float = 0.1,
     seed: int = 42,
+    split: str = "standard",
 ) -> Path:
     try:
         from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
@@ -133,7 +136,11 @@ def train_system_b(
     np.random.seed(seed)
     random.seed(seed)
 
-    rows = read_jsonl(input_path)
+    resolved_input_path = Path(input_path) if input_path is not None else default_pair_dataset_path(split)
+    resolved_output_dir = Path(output_dir) if output_dir is not None else default_model_dir(split)
+    metrics_path = default_train_metrics_path(split)
+
+    rows = read_jsonl(resolved_input_path)
     train_rows, dev_rows = split_rows(rows, dev_ratio=dev_ratio, seed=seed)
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -181,13 +188,14 @@ def train_system_b(
         raise RuntimeError("Training did not produce a checkpoint.")
 
     model.load_state_dict(best_state)
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    model.save_pretrained(output_dir)
-    tokenizer.save_pretrained(output_dir)
+    resolved_output_dir.mkdir(parents=True, exist_ok=True)
+    model.save_pretrained(resolved_output_dir)
+    tokenizer.save_pretrained(resolved_output_dir)
 
     metrics = {
         "model_name": model_name,
+        "pair_split": split,
+        "input_path": str(resolved_input_path),
         "train_examples": len(train_rows),
         "dev_examples": len(dev_rows),
         "history": history,
@@ -202,17 +210,23 @@ def train_system_b(
             "seed": seed,
         },
     }
-    metrics_path = output_dir.parent / "train_metrics.json"
+    metrics_path.parent.mkdir(parents=True, exist_ok=True)
     metrics_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
-    print(f"Saved System B model -> {output_dir}")
+    print(f"Saved System B model -> {resolved_output_dir}")
     print(f"Saved training metrics -> {metrics_path}")
-    return output_dir
+    return resolved_output_dir
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Train System B on filtered pseudo-pairs.")
-    parser.add_argument("--input", default=str(FILTERED_PAIRS_PATH))
-    parser.add_argument("--output-dir", default=str(MODEL_DIR))
+    parser = argparse.ArgumentParser(description="Train System B on split-aware pseudo-pairs.")
+    parser.add_argument(
+        "--split",
+        default="standard",
+        choices=SYSTEM_B_SPLIT_CHOICES,
+        help="Which pseudo-pair set to train on. Used to resolve the default --input and --output-dir.",
+    )
+    parser.add_argument("--input", default=None, help="Override the pseudo-pair JSONL path.")
+    parser.add_argument("--output-dir", default=None, help="Override the fine-tuned model output directory.")
     parser.add_argument("--model-name", default="google/flan-t5-base")
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--epochs", type=int, default=1)
@@ -240,6 +254,7 @@ def main() -> None:
         max_target_length=args.max_target_length,
         dev_ratio=args.dev_ratio,
         seed=args.seed,
+        split=args.split,
     )
 
 

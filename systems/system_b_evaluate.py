@@ -14,14 +14,15 @@ if str(PROJECT_ROOT) not in sys.path:
 from similarity.semantic_similarity import batch_semantic_similarity
 from systems.system_b_encdec import batch_generate
 from systems.system_b_utils import (
-    ARTIFACT_ROOT,
     count_true,
+    default_eval_output_path,
+    default_model_dir,
     infer_direction,
     load_anchored_data,
     load_style_scorer,
-    MODEL_DIR,
     safe_mean,
     select_subset,
+    SYSTEM_B_SPLIT_CHOICES,
 )
 from systems.system_a.template_utils import preserves_anchors
 
@@ -44,13 +45,14 @@ def evaluate_system_b(
     *,
     batch_size: int = 16,
     system_b_mode: str = "auto",
-    finetuned_model_dir: str | Path = MODEL_DIR,
+    finetuned_model_dir: str | Path | None = None,
 ) -> tuple[Path, Path]:
     df = load_anchored_data()
     subset = select_subset(df, split_name=split_name, split=split)
     if limit > 0:
         subset = subset.head(limit).reset_index(drop=True)
 
+    resolved_model_dir = Path(finetuned_model_dir) if finetuned_model_dir is not None else default_model_dir(split)
     style_scorer = load_style_scorer(split=split)
     texts = subset["text"].astype(str).tolist()
     directions = [infer_direction(int(label)) for label in subset["label"].tolist()]
@@ -60,7 +62,7 @@ def evaluate_system_b(
         k=1,
         batch_size=batch_size,
         mode=system_b_mode,
-        finetuned_model_dir=finetuned_model_dir,
+        finetuned_model_dir=resolved_model_dir,
     )
     rewritten_texts = [candidates[0] if candidates else original for candidates, original in zip(generated, texts)]
     similarities = batch_semantic_similarity(texts, rewritten_texts).tolist()
@@ -97,7 +99,7 @@ def evaluate_system_b(
         style_flags.append(style_ok)
 
     if output_path is None:
-        output_path = ARTIFACT_ROOT / f"{split_name}_outputs.jsonl"
+        output_path = default_eval_output_path(split_name=split_name, split=split)
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(outputs).to_json(output_path, orient="records", lines=True, force_ascii=False)
@@ -105,6 +107,7 @@ def evaluate_system_b(
     summary = {
         "split_name": split_name,
         "split_strategy": split,
+        "finetuned_model_dir": str(resolved_model_dir),
         "num_examples": len(outputs),
         "avg_semantic_similarity": safe_mean(similarities),
         "anchor_preservation_rate": count_true(anchor_flags) / max(len(anchor_flags), 1),
@@ -122,12 +125,18 @@ def evaluate_system_b(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Evaluate fine-tuned System B outputs.")
     parser.add_argument("--split-name", default="test")
-    parser.add_argument("--split-strategy", default="standard")
+    parser.add_argument(
+        "--split",
+        "--split-strategy",
+        dest="split",
+        default="standard",
+        choices=SYSTEM_B_SPLIT_CHOICES,
+    )
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--output", default=None)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--system-b-mode", default="auto", choices=["auto", "finetuned_local", "prompt_fallback"])
-    parser.add_argument("--finetuned-model-dir", default=str(MODEL_DIR))
+    parser.add_argument("--finetuned-model-dir", default=None)
     return parser
 
 
@@ -136,7 +145,7 @@ def main() -> None:
     args = parser.parse_args()
     evaluate_system_b(
         split_name=args.split_name,
-        split=args.split_strategy,
+        split=args.split,
         limit=args.limit,
         output_path=args.output,
         batch_size=args.batch_size,
