@@ -423,7 +423,7 @@ def run_system_c(
         subset = subset.head(limit).reset_index(drop=True)
     subset_rows = subset.to_dict("records")
 
-    style_scorer = load_style_scorer()
+    style_scorer = load_style_scorer(split=split_strategy)
     rerank_config = dict(DEFAULT_RERANK_CONFIG)
     if no_semantic_constraint:
         rerank_config["enforce_semantic_constraint"] = False

@@ -44,6 +44,7 @@ from systems.system_b_utils import (
     score_style_probability,
     semantic_similarity_score,
     select_subset,
+    SYSTEM_B_SPLIT_CHOICES,
     target_style_passes,
     write_jsonl,
 )
@@ -250,7 +251,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     gen = sub.add_parser("generate", help="Generate raw pseudo-pairs with an OpenAI model.")
     gen.add_argument("--splits", default="train", help="Comma-separated split names, e.g. train or train,dev")
-    gen.add_argument("--split-strategy", default="standard", help="Split strategy name from data.splits.SPLIT_REGISTRY")
+    gen.add_argument(
+        "--split",
+        "--split-strategy",
+        dest="split",
+        default="standard",
+        choices=SYSTEM_B_SPLIT_CHOICES,
+        help="Split strategy name from data.splits.SPLIT_REGISTRY",
+    )
     gen.add_argument("--output", default=str(RAW_PAIRS_PATH))
     gen.add_argument("--model", default=DEFAULT_BOOTSTRAP_MODEL)
     gen.add_argument("--limit", type=int, default=DEFAULT_RAW_LIMIT)
@@ -260,8 +268,11 @@ def build_parser() -> argparse.ArgumentParser:
     filt.add_argument("--input", default=str(RAW_PAIRS_PATH))
     filt.add_argument("--output", default=str(FILTERED_PAIRS_PATH))
     filt.add_argument(
+        "--split",
         "--split-strategy",
+        dest="split",
         default="standard",
+        choices=SYSTEM_B_SPLIT_CHOICES,
         help="Which split-aware classifier checkpoint to use for the style filter.",
     )
     filt.add_argument("--min-similarity", type=float, default=0.55)
@@ -280,7 +291,7 @@ def main() -> None:
         generate_raw_pairs(
             split_names=split_names,
             output_path=args.output,
-            split=args.split_strategy,
+            split=args.split,
             model_name=args.model,
             limit=args.limit,
             start_at=args.start_at,
@@ -295,7 +306,7 @@ def main() -> None:
             min_target_style_confidence=args.min_target_style_confidence,
             max_edit_ratio=args.max_edit_ratio,
             skip_style_filter=args.skip_style_filter,
-            split=args.split_strategy,
+            split=args.split,
         )
         return
 

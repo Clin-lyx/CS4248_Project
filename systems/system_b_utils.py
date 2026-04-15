@@ -22,7 +22,56 @@ ARTIFACT_ROOT = PROJECT_ROOT / "artifacts" / "system_b"
 RAW_PAIRS_PATH = ARTIFACT_ROOT / "pseudo_pairs_raw.jsonl"
 FILTERED_PAIRS_PATH = ARTIFACT_ROOT / "pseudo_pairs_filtered.jsonl"
 MODEL_DIR = ARTIFACT_ROOT / "model"
+AUTHOR_BALANCED_PAIRS_PATH = ARTIFACT_ROOT / "pseudo_pairs_author_balanced.jsonl"
+TOPIC_HARD_AUTHOR_BALANCED_PAIRS_PATH = ARTIFACT_ROOT / "pseudo_pairs_author_balanced_topic_hard.jsonl"
 LOGREG_ARTIFACT_ROOT = PROJECT_ROOT / "artifacts" / "classifiers" / "logreg"
+
+SYSTEM_B_PAIR_REGISTRY: dict[str, Path] = {
+    "standard": AUTHOR_BALANCED_PAIRS_PATH,
+    "topic_hard": TOPIC_HARD_AUTHOR_BALANCED_PAIRS_PATH,
+}
+SYSTEM_B_SPLIT_CHOICES = tuple(sorted(SYSTEM_B_PAIR_REGISTRY))
+
+
+def resolve_system_b_split(split: str = "standard") -> str:
+    normalized = str(split).strip()
+    if normalized not in SYSTEM_B_PAIR_REGISTRY:
+        raise KeyError(
+            f"Unknown System B split '{split}'. Available: {sorted(SYSTEM_B_PAIR_REGISTRY)}"
+        )
+    if normalized not in SPLIT_REGISTRY:
+        raise KeyError(
+            f"Split '{split}' is missing from data.splits.SPLIT_REGISTRY. "
+            f"Available dataset splits: {sorted(SPLIT_REGISTRY)}"
+        )
+    return normalized
+
+
+def default_pair_dataset_path(split: str = "standard") -> Path:
+    resolved_split = resolve_system_b_split(split)
+    return SYSTEM_B_PAIR_REGISTRY[resolved_split]
+
+
+def default_model_dir(split: str = "standard") -> Path:
+    resolved_split = resolve_system_b_split(split)
+    if resolved_split == "standard":
+        return MODEL_DIR
+    return ARTIFACT_ROOT / resolved_split / "model"
+
+
+def default_train_metrics_path(split: str = "standard") -> Path:
+    resolved_split = resolve_system_b_split(split)
+    if resolved_split == "standard":
+        return ARTIFACT_ROOT / "train_metrics.json"
+    return ARTIFACT_ROOT / resolved_split / "train_metrics.json"
+
+
+def default_eval_output_path(split_name: str = "test", split: str = "standard") -> Path:
+    resolved_split = resolve_system_b_split(split)
+    file_name = f"{split_name}_outputs.jsonl"
+    if resolved_split == "standard":
+        return ARTIFACT_ROOT / file_name
+    return ARTIFACT_ROOT / resolved_split / file_name
 
 
 def ensure_parent_dir(path: str | Path) -> Path:

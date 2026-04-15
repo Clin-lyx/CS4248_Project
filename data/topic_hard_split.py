@@ -30,6 +30,7 @@ _DEFAULT_INPUT_PATH = "artifacts/data/cleaned.jsonl"
 _DEFAULT_OUTPUT_PATH = "artifacts/splits/topic_hard.json"
 _DEFAULT_K_VALUES = [20, 30, 40, 50, 60, 80]
 _RANDOM_STATE = 42
+_DEFAULT_BALANCE_BAND = (0.4, 0.6)
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +148,12 @@ def evaluate_k_values(
 
 def choose_usable_k(metrics: pd.DataFrame) -> int:
     """Pick k via composite: higher silhouette/entropy, lower concentration/skew."""
+    m = add_usable_score(metrics)
+    return int(m.sort_values("usable_score", ascending=False).iloc[0]["k"])
+
+
+def add_usable_score(metrics: pd.DataFrame) -> pd.DataFrame:
+    """Attach the composite usability score used to choose k."""
     m = metrics.copy()
     m["usable_score"] = (
         1.0 * m["silhouette"]
@@ -154,7 +161,7 @@ def choose_usable_k(metrics: pd.DataFrame) -> int:
         - 0.25 * m["max_cluster_pct"]
         - 0.15 * m["mean_abs_label_skew"]
     )
-    return int(m.sort_values("usable_score", ascending=False).iloc[0]["k"])
+    return m
 
 
 # ---------------------------------------------------------------------------
@@ -162,17 +169,89 @@ def choose_usable_k(metrics: pd.DataFrame) -> int:
 # ---------------------------------------------------------------------------
 
 def summarize_clusters(
-    df: pd.DataFrame, cluster_col: str = "cluster",
+    df: pd.DataFrame,
+    cluster_col: str = "cluster",
+    balance_band: tuple[float, float] = _DEFAULT_BALANCE_BAND,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Return (size_table, label_mix) DataFrames."""
-    counts = df[cluster_col].value_counts().sort_index()
-    size_table = pd.DataFrame({
-        "n": counts,
-        "pct": (counts / len(df) * 100).round(2),
-    })
-    label_mix = pd.crosstab(df[cluster_col], df["label"], normalize="index").round(3)
-    label_mix.columns = [f"label_{int(c)}" for c in label_mix.columns]
-    return size_table, label_mix
+    """
+    Return a compact cluster summary table plus per-cluster profile rows.
+
+    The summary table is intended for reports/slides; the cluster profile keeps
+    richer per-cluster statistics for downstream inspection.
+    """
+    lower, upper = balance_band
+    cluster_profile = (
+        df.groupby(cluster_col)
+        .agg(
+            cluster_size=("id", "size"),
+            sarcasm_ratio=("label", "mean"),
+        )
+        .reset_index()
+        .sort_values(cluster_col)
+        .reset_index(drop=True)
+    )
+    cluster_profile["non_sarcasm_ratio"] = 1.0 - cluster_profile["sarcasm_ratio"]
+    cluster_profile["balance_gap"] = (cluster_profile["sarcasm_ratio"] - 0.5).abs()
+    cluster_profile["majority_label"] = np.where(
+        cluster_profile["sarcasm_ratio"] > 0.5,
+        "sarcasm",
+        np.where(cluster_profile["sarcasm_ratio"] < 0.5, "non-sarcasm", "tied"),
+    )
+    cluster_profile["balance_bucket"] = np.where(
+        cluster_profile["sarcasm_ratio"] > upper,
+        "sarcasm-heavy",
+        np.where(
+            cluster_profile["sarcasm_ratio"] < lower,
+            "non-sarcasm-heavy",
+            "near-balanced",
+        ),
+    )
+    cluster_profile["is_near_balanced"] = cluster_profile["sarcasm_ratio"].between(
+        lower,
+        upper,
+        inclusive="both",
+    )
+
+    size_values = cluster_profile["cluster_size"]
+    summary_table = pd.DataFrame(
+        {
+            "Item": [
+                "Number of clusters chosen",
+                "Mean cluster size",
+                "Median cluster size",
+                "Smallest cluster",
+                "Largest cluster",
+                f"# sarcasm-heavy clusters (>{int(upper * 100)}% sarcasm)",
+                f"# near-balanced clusters ({int(lower * 100)}-{int(upper * 100)}% sarcasm)",
+                f"# non-sarcasm-heavy clusters (<{int(lower * 100)}% sarcasm)",
+            ],
+            "Value": [
+                int(cluster_profile[cluster_col].nunique()),
+                float(size_values.mean()),
+                float(size_values.median()),
+                int(size_values.min()),
+                int(size_values.max()),
+                int((cluster_profile["balance_bucket"] == "sarcasm-heavy").sum()),
+                int((cluster_profile["balance_bucket"] == "near-balanced").sum()),
+                int((cluster_profile["balance_bucket"] == "non-sarcasm-heavy").sum()),
+            ],
+        }
+    )
+    return summary_table, cluster_profile
+
+
+def _format_summary_table(summary_table: pd.DataFrame) -> pd.DataFrame:
+    """Format summary values for compact CLI printing."""
+    formatted = summary_table.copy()
+
+    def _format_value(value: float) -> str:
+        value = float(value)
+        if value.is_integer():
+            return f"{int(value):,}"
+        return f"{value:,.1f}"
+
+    formatted["Value"] = formatted["Value"].map(_format_value)
+    return formatted
 
 
 def top_terms_by_cluster(
@@ -186,6 +265,121 @@ def top_terms_by_cluster(
         top_idx = np.argsort(mean_vec)[::-1][:top_n]
         rows.append({"cluster": int(c), "top_terms": ", ".join(feature_names[top_idx])})
     return pd.DataFrame(rows)
+
+
+def select_cluster_examples(
+    cluster_profile: pd.DataFrame,
+    top_terms_df: pd.DataFrame,
+    cluster_col: str = "cluster",
+    terms_to_show: int = 6,
+) -> pd.DataFrame:
+    """
+    Pick a small, interpretable set of representative clusters.
+
+    This mirrors the notebook presentation: most sarcastic, most non-sarcastic,
+    most balanced, smallest, and largest cluster.
+    """
+    candidates = cluster_profile.merge(top_terms_df, on=cluster_col, how="left")
+
+    def _shorten_terms(term_string: str) -> str:
+        terms = [term.strip() for term in str(term_string).split(",") if term.strip()]
+        return ", ".join(terms[:terms_to_show])
+
+    selectors = [
+        (
+            "Most sarcastic cluster",
+            lambda frame: frame.sort_values(["sarcasm_ratio", "cluster_size"], ascending=[False, False]),
+        ),
+        (
+            "Most non-sarcastic cluster",
+            lambda frame: frame.sort_values(["sarcasm_ratio", "cluster_size"], ascending=[True, False]),
+        ),
+        (
+            "Most balanced cluster",
+            lambda frame: frame.sort_values(["balance_gap", "cluster_size"], ascending=[True, False]),
+        ),
+        (
+            "Smallest cluster",
+            lambda frame: frame.sort_values(["cluster_size", "balance_gap"], ascending=[True, True]),
+        ),
+        (
+            "Largest cluster",
+            lambda frame: frame.sort_values(["cluster_size", "balance_gap"], ascending=[False, True]),
+        ),
+    ]
+
+    rows = []
+    used_clusters: set[int] = set()
+
+    for example_name, ranker in selectors:
+        ranked = ranker(candidates.copy())
+        chosen_row = None
+
+        for _, candidate in ranked.iterrows():
+            cluster_id = int(candidate[cluster_col])
+            if cluster_id not in used_clusters:
+                used_clusters.add(cluster_id)
+                chosen_row = candidate
+                break
+
+        if chosen_row is None:
+            chosen_row = ranked.iloc[0]
+
+        rows.append(
+            {
+                "Example": example_name,
+                "Cluster": int(chosen_row[cluster_col]),
+                "Size": int(chosen_row["cluster_size"]),
+                "Sarcasm %": f"{chosen_row['sarcasm_ratio'] * 100:.1f}%",
+                "Majority label": chosen_row["majority_label"],
+                "Top terms": _shorten_terms(chosen_row["top_terms"]),
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def plot_cluster_diagnostics(
+    cluster_profile: pd.DataFrame,
+    balance_band: tuple[float, float] = _DEFAULT_BALANCE_BAND,
+) -> None:
+    """Plot cluster size against sarcasm proportion for slide/report use."""
+    import matplotlib.pyplot as plt
+
+    lower, upper = balance_band
+    colors = np.where(
+        cluster_profile["sarcasm_ratio"] > upper,
+        "#c0392b",
+        np.where(cluster_profile["sarcasm_ratio"] < lower, "#2980b9", "#7f8c8d"),
+    )
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.axhspan(
+        lower,
+        upper,
+        color="#ecf0f1",
+        alpha=0.9,
+        label=f"Near-balanced band ({int(lower * 100)}-{int(upper * 100)}%)",
+    )
+    ax.scatter(
+        cluster_profile["cluster_size"],
+        cluster_profile["sarcasm_ratio"],
+        c=colors,
+        s=70,
+        alpha=0.85,
+        edgecolors="white",
+        linewidth=0.6,
+    )
+    ax.axhline(0.5, color="black", linestyle="--", linewidth=1.0, label="50% sarcasm")
+    ax.set_xscale("log")
+    ax.set_xlabel("Cluster size (log scale)")
+    ax.set_ylabel("Sarcasm proportion")
+    ax.set_title("Topic clusters vary in both size and sarcasm ratio")
+    ax.set_ylim(-0.02, 1.02)
+    ax.grid(alpha=0.25)
+    ax.legend(loc="lower right")
+    plt.tight_layout()
+    plt.show()
 
 
 # ---------------------------------------------------------------------------
@@ -345,6 +539,7 @@ def print_final_summary(
     df_assigned: pd.DataFrame,
     cluster_to_split: dict[int, str],
     target_ratios: dict[str, float],
+    show_cluster_membership: bool = False,
 ) -> None:
     total = len(df_assigned)
     global_pos = float(df_assigned["label"].mean())
@@ -357,19 +552,23 @@ def print_final_summary(
         actual_ratio = n / total
         target_ratio = target_ratios[split_name]
         label_dist = part["label"].value_counts(normalize=True).sort_index()
-        clusters = sorted(part["cluster"].unique().tolist())
 
         print(f"\n{split_name.upper()} ({n} rows, {actual_ratio:.3f} vs target {target_ratio:.2f})")
         for lab in [0, 1]:
             print(f"  label_{lab}: {float(label_dist.get(lab, 0.0)):.3f}")
-        print(f"  clusters: {clusters}")
+        print(f"  n_clusters: {part['cluster'].nunique()}")
 
-    split_to_clusters: dict[str, list[int]] = {s: [] for s in target_ratios}
-    for c, s in cluster_to_split.items():
-        split_to_clusters[s].append(c)
-    print("\nCluster assignment per split:")
-    for s in ["train", "dev", "test"]:
-        print(f"  {s}: {sorted(split_to_clusters[s])}")
+        if show_cluster_membership:
+            clusters = sorted(part["cluster"].unique().tolist())
+            print(f"  clusters: {clusters}")
+
+    if show_cluster_membership:
+        split_to_clusters: dict[str, list[int]] = {s: [] for s in target_ratios}
+        for c, s in cluster_to_split.items():
+            split_to_clusters[s].append(c)
+        print("\nCluster assignment per split:")
+        for s in ["train", "dev", "test"]:
+            print(f"  {s}: {sorted(split_to_clusters[s])}")
 
 
 # ---------------------------------------------------------------------------
@@ -395,6 +594,7 @@ def main() -> None:
         k_values=_DEFAULT_K_VALUES,
         random_state=_RANDOM_STATE,
     )
+    metrics = add_usable_score(metrics)
     print(metrics.to_string(index=False))
 
     chosen_k = choose_usable_k(metrics)
@@ -403,15 +603,14 @@ def main() -> None:
     df = df.copy()
     df["cluster"] = labels_by_k[chosen_k]
 
-    size_table, label_mix = summarize_clusters(df)
-    print("\nCluster sizes:")
-    print(size_table.to_string())
-    print("\nLabel mix per cluster:")
-    print(label_mix.to_string())
+    summary_table, cluster_profile = summarize_clusters(df)
+    print("\nCluster summary:")
+    print(_format_summary_table(summary_table).to_string(index=False))
 
     terms = top_terms_by_cluster(X_tfidf, df["cluster"].to_numpy(), vectorizer)
-    print("\nTop terms per cluster:")
-    print(terms.to_string(index=False))
+    cluster_examples = select_cluster_examples(cluster_profile, terms)
+    print("\nRepresentative cluster examples:")
+    print(cluster_examples.to_string(index=False))
 
     df_assigned, cluster_to_split = assign_clusters_to_splits(
         df=df,
