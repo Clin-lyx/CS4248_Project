@@ -249,7 +249,9 @@ Classifier artifacts are stored under:
 
 ### Train System B
 
-The current `system_b_train.py` script is **file-based**, not split-flag based.
+System B training is file-based (unlike classifiers).
+
+To train on different pseudo-pair sets (author-balanced, topic-hard, etc.), point --input to the desired file.
 
 Example:
 
@@ -467,6 +469,11 @@ These notebooks cover:
 ---
 
 ## Notebooks
+Use the **root notebooks** for full end-to-end workflows and `notebooks/` for focused analysis or experimentation.
+
+- `CS4248_Project_standard.ipynb`
+- `CS4248_Project_topic_hard.ipynb`
+
 
 Support notebooks under `notebooks/` include:
 
@@ -478,6 +485,8 @@ Support notebooks under `notebooks/` include:
 - `topic_clustering_tfidf_kmeans.ipynb`
 - `train_classifiers.ipynb`
 
-Use the **root notebooks** for full end-to-end workflows and `notebooks/` for focused analysis or experimentation.
+
+
+
 
 ---
