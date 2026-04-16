@@ -249,23 +249,41 @@ Classifier artifacts are stored under:
 
 ### Train System B
 
-System B training is file-based (unlike classifiers).
+System B training can select the matching pseudo-pair file with `--split`.
 
-To train on different pseudo-pair sets (author-balanced, topic-hard, etc.), point --input to the desired file.
-
-Example:
+For the standard split:
 
 ```bash
 python systems/system_b_train.py \
-  --input artifacts/system_b/pseudo_pairs_author_balanced.jsonl \
+  --split standard \
   --output-dir artifacts/system_b/model \
   --model-name google/flan-t5-base \
   --epochs 4 \
   --batch-size 8
 ```
 
+This uses:
+
+- `artifacts/system_b/pseudo_pairs_author_balanced.jsonl`
+
+For the topic-hard split:
+
+```bash
+python systems/system_b_train.py \
+  --split topic_hard \
+  --output-dir artifacts/system_b/topic_hard/model \
+  --model-name google/flan-t5-base \
+  --epochs 4 \
+  --batch-size 8
+```
+
+This uses:
+
+- `artifacts/system_b/pseudo_pairs_author_balanced_topic_hard.jsonl`
+
 Useful arguments:
 
+- `--split`
 - `--input`
 - `--output-dir`
 - `--model-name`
@@ -278,7 +296,7 @@ Useful arguments:
 - `--dev-ratio`
 - `--seed`
 
-For topic-hard experiments, point `--input` and `--output-dir` to the topic-hard pseudo-pair file and desired output directory.
+Use `--input` only when you want to override the split default and train from a specific pseudo-pair JSONL file.
 
 ---
 
